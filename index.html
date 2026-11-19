@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Optical Cavity Lab — Physical Video Feedback Regime Explorer</title>
+<style>
+  :root {
+    --bg: #07080a;
+    --panel: #101217;
+    --panel-border: #232734;
+    --text: #e2e6ef;
+    --muted: #8a92a6;
+    --accent: #4cc9f0;
+    --accent2: #f72585;
+    --ok: #3ddc97;
+    --warn: #ffb703;
+    --danger: #ff4d6d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 416px;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Left Optical Stage (kept pitch black so UI doesn't pollute webcam) */
+  .stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000000;
+    overflow: hidden;
+  }
+
+  .stage-hint {
+    position: absolute;
+    top: 10px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #555c6e;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Dynamic AE Luminance Ballast Border */
+  .ballast-frame {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 58px;
+    background: rgb(115, 115, 115);
+    border-radius: 4px;
+    transition: padding 0.15s ease;
+  }
+
+  .ballast-frame.off {
+    background: #000000 !important;
+  }
+
+  .cavity-wrap {
+    position: relative;
+    width: 512px;
+    height: 512px;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+    cursor: crosshair;
+  }
+
+  #cavityCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  #calOverlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: #fff;
+    text-shadow: 0 1px 4px #000;
+  }
+
+  /* Right Instrument Rack */
+  .rack {
+    background: var(--panel);
+    border-left: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 12px 14px 24px 14px;
+    gap: 10px;
+  }
+
+  .rack::-webkit-scrollbar { width: 6px; }
+  .rack::-webkit-scrollbar-thumb { background: #2c3140; border-radius: 3px; }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 8px;
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  .header .sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .card {
+    background: #151821;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 9px 10px;
+  }
+
+  .card-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 7px;
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #1f2433;
+    color: var(--text);
+  }
+  .badge.ok { background: rgba(61,220,151,0.16); color: var(--ok); }
+  .badge.warn { background: rgba(255,183,3,0.16); color: var(--warn); }
+  .badge.danger { background: rgba(255,77,109,0.16); color: var(--danger); }
+  .badge.accent { background: rgba(76,201,240,0.16); color: var(--accent); }
+
+  .row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .row + .row { margin-top: 6px; }
+
+  button, select {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: #1d2230;
+    color: var(--text);
+    border: 1px solid #30374a;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+
+  button:hover, select:hover {
+    background: #272e40;
+    border-color: #46506b;
+  }
+
+  button.primary {
+    background: #14364a;
+    border-color: var(--accent);
+    color: #d9f6ff;
+  }
+  button.primary:hover { background: #1a4761; }
+
+  button.active {
+    background: #1b4353;
+    border-color: var(--accent);
+    color: #ffffff;
+  }
+
+  button.danger-btn {
+    background: #361722;
+    border-color: #7a2943;
+    color: #ffd6e0;
+  }
+
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  select { flex: 1; min-width: 110px; }
+
+  .regime-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .regime-btn {
+    text-align: left;
+    padding: 7px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .regime-btn .r-name { font-weight: 700; font-size: 11px; color: #fff; }
+  .regime-btn .r-desc { font-size: 9.5px; color: var(--muted); }
+  .regime-btn.wide { grid-column: span 2; flex-direction: row; justify-content: space-between; align-items: center; }
+
+  /* Sliders */
+  .ctrl {
+    display: grid;
+    grid-template-columns: 108px 1fr 52px;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .ctrl label { color: #b9c1d4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctrl input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;
+  }
+  .ctrl .val { text-align: right; color: var(--accent); font-size: 10.5px; }
+
+  /* Preview & Diagnostics Canvases */
+  .diag-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .mini-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mini-label {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  canvas.diag {
+    width: 100%;
+    height: 120px;
+    background: #090b0f;
+    border: 1px solid #262c3b;
+    border-radius: 4px;
+    display: block;
+  }
+
+  #camPreview {
+    width: 100%;
+    height: 175px;
+    background: #090b0f;
+    border: 1px solid #262c3b;
+    border-radius: 4px;
+    display: block;
+    cursor: grab;
+  }
+  #camPreview:active { cursor: grabbing; }
+
+  .telemetry-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .stat {
+    background: #0d1017;
+    border: 1px solid #202533;
+    border-radius: 4px;
+    padding: 5px 6px;
+    font-family: var(--mono);
+  }
+  .stat .k { font-size: 9px; color: var(--muted); text-transform: uppercase; }
+  .stat .v { font-size: 12px; color: #fff; margin-top: 2px; }
+
+  .log-line {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #9ba5bc;
+    background: #0c0e14;
+    border: 1px solid #202533;
+    border-radius: 4px;
+    padding: 6px 7px;
+    min-height: 30px;
+    line-height: 1.4;
+  }
+
+  .chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #c7cee0;
+    cursor: pointer;
+  }
+
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow-y: auto; }
+    .rack { height: auto; overflow-y: visible; }
+    .cavity-wrap { width: 340px; height: 340px; }
+    .ballast-frame { padding: 32px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- LEFT: PHYSICAL OPTICAL CAVITY STAGE -->
+  <div class="stage" id="stage">
+    <div class="stage-hint" id="stageHint">Draw inside cavity to perturb light loop • Space = Pulse • R = Re-Seed</div>
+    <div class="ballast-frame" id="ballastFrame">
+      <div class="cavity-wrap" id="cavityWrap">
+        <canvas id="cavityCanvas" width="512" height="512"></canvas>
+        <div id="calOverlay"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: INSTRUMENT RACK -->
+  <div class="rack">
+    <div class="header">
+      <div>
+        <h1>Optical Cavity Lab</h1>
+        <div class="sub">Physical Webcam–Monitor Feedback Bench</div>
+      </div>
+      <span class="badge accent" id="modeBadge">SIM CAMERA</span>
+    </div>
+
+    <!-- 1. CAMERA & UVC HARDWARE -->
+    <div class="card">
+      <div class="card-title">
+        <span>1. Optical Input &amp; UVC Control</span>
+        <span class="badge" id="uvcBadge">SIMULATED</span>
+      </div>
+      <div class="row">
+        <select id="cameraSelect"><option value="">Default Webcam</option></select>
+        <button id="btnWebcam" class="primary">Use Webcam</button>
+        <button id="btnSim" class="active">Sim Mode</button>
+      </div>
+      <div class="row">
+        <button id="btnAutoCal" class="primary" disabled>Auto-Lock Homography (2s)</button>
+        <button id="btnLatency" disabled>Measure &tau; (ms)</button>
+        <button id="btnResetQuad" title="Reset camera crop corners">Reset Quad</button>
+      </div>
+      <div class="row" style="margin-top:7px;">
+        <label class="chk"><input type="checkbox" id="chkBallast" checked /> AE Ballast Border</label>
+        <label class="chk"><input type="checkbox" id="chkPause" /> Freeze Loop</label>
+        <label class="chk" title="Resize cavity square for camera framing">Size:
+          <select id="selSize" style="flex:0; min-width:64px; padding:2px 4px;">
+            <option value="384">384px</option>
+            <option value="448">448px</option>
+            <option value="512" selected>512px</option>
+            <option value="600">600px</option>
+          </select>
+        </label>
+      </div>
+      <div id="uvcSliders" style="margin-top:6px; display:none;">
+        <div class="ctrl">
+          <label>UVC Exposure</label>
+          <input type="range" id="uvcExposure" min="1" max="1000" step="1" value="100" />
+          <span class="val" id="uvcExposureVal">—</span>
+        </div>
+      </div>
+      <div class="ctrl" style="margin-top:6px; margin-bottom:0;">
+        <label>Ballast Target</label>
+        <input type="range" id="slBallastTarget" min="0.15" max="0.80" step="0.01" value="0.45" />
+        <span class="val" id="valBallastTarget">0.45</span>
+      </div>
+    </div>
+
+    <!-- 2. CAMERA ALIGNMENT PREVIEW -->
+    <div class="card">
+      <div class="card-title">
+        <span>2. Raw Camera &amp; Homography Quad</span>
+        <span class="badge" id="quadBadge">Drag corners to align</span>
+      </div>
+      <canvas id="camPreview" width="360" height="240"></canvas>
+      <div class="telemetry-bar">
+        <div class="stat"><div class="k">Round-Trip &tau;</div><div class="v" id="statTau">— ms</div></div>
+        <div class="stat"><div class="k">Cavity Luma</div><div class="v" id="statLuma">0.00</div></div>
+        <div class="stat"><div class="k">Ballast Luma</div><div class="v" id="statBallast">0.45</div></div>
+      </div>
+    </div>
+
+    <!-- 3. CLICKABLE PHYSICS REGIMES -->
+    <div class="card">
+      <div class="card-title">
+        <span>3. Physics Regimes (One-Click Bench)</span>
+        <span class="badge ok" id="regimeStateBadge">READY</span>
+      </div>
+      <div class="regime-grid">
+        <button class="regime-btn" data-regime="courtial">
+          <span class="r-name">Courtial Lattice</span>
+          <span class="r-desc">Nature '01 fractal rosette (M=0.72)</span>
+        </button>
+        <button class="regime-btn" data-regime="crutchfield">
+          <span class="r-name">Crutchfield Worms</span>
+          <span class="r-desc">Physica D '84 DoG reaction-diff</span>
+        </button>
+        <button class="regime-btn" data-regime="period2">
+          <span class="r-name">Period-2 Crystal</span>
+          <span class="r-desc">Inverted Hopf standing waves</span>
+        </button>
+        <button class="regime-btn" data-regime="vortex">
+          <span class="r-name">Cavity Vortex</span>
+          <span class="r-desc">Delay-line color spiral attractor</span>
+        </button>
+        <button class="regime-btn wide" data-regime="raw">
+          <span class="r-name">1:1 Calibrated Mirror (Alignment Check)</span>
+          <span class="r-desc">M=1.00, &theta;=0&deg;</span>
+        </button>
+      </div>
+      <div class="row" style="margin-top:7px;">
+        <button id="btnSeedDot">Seed Dot</button>
+        <button id="btnSeedTri">Seed Triangle</button>
+        <button id="btnSeedNoise">Seed Noise</button>
+        <button id="btnBlackout" class="danger-btn">Clear Cavity</button>
+      </div>
+    </div>
+
+    <!-- 4. VIRTUAL OPTICAL BENCH SLIDERS -->
+    <div class="card">
+      <div class="card-title">
+        <span>4. Virtual Optical Bench (GPU)</span>
+        <span class="badge" id="fpsBadge">60 FPS</span>
+      </div>
+
+      <div class="ctrl">
+        <label>Magnification M</label>
+        <input type="range" id="slMag" min="0.45" max="2.20" step="0.005" value="1.02" />
+        <span class="val" id="valMag">1.020</span>
+      </div>
+      <div class="ctrl">
+        <label>Rotation &theta; (&deg;)</label>
+        <input type="range" id="slRot" min="-180" max="180" step="0.2" value="0.6" />
+        <span class="val" id="valRot">0.6&deg;</span>
+      </div>
+      <div class="ctrl">
+        <label>Center X&sub0;</label>
+        <input type="range" id="slCx" min="-0.15" max="0.15" step="0.0005" value="0.0" />
+        <span class="val" id="valCx">0.000</span>
+      </div>
+      <div class="ctrl">
+        <label>Center Y&sub0;</label>
+        <input type="range" id="slCy" min="-0.15" max="0.15" step="0.0005" value="0.0" />
+        <span class="val" id="valCy">0.000</span>
+      </div>
+      <div class="ctrl">
+        <label>Contrast Gain</label>
+        <input type="range" id="slGain" min="0.50" max="3.50" step="0.02" value="1.95" />
+        <span class="val" id="valGain">1.95</span>
+      </div>
+      <div class="ctrl">
+        <label>Bias / Offset</label>
+        <input type="range" id="slBias" min="-0.50" max="0.50" step="0.005" value="0.00" />
+        <span class="val" id="valBias">0.000</span>
+      </div>
+      <div class="ctrl">
+        <label>Hue Phase (&deg;)</label>
+        <input type="range" id="slHue" min="0" max="120" step="1" value="8" />
+        <span class="val" id="valHue">8&deg;</span>
+      </div>
+      <div class="ctrl">
+        <label>Delay Frames</label>
+        <input type="range" id="slDelay" min="0" max="14" step="1" value="1" />
+        <span class="val" id="valDelay">1</span>
+      </div>
+      <div class="ctrl">
+        <label>Delay Blend</label>
+        <input type="range" id="slDelayMix" min="0" max="0.90" step="0.01" value="0.20" />
+        <span class="val" id="valDelayMix">0.20</span>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label class="chk">Filter:
+          <select id="selFilter" style="flex:0; min-width:118px; padding:3px 5px;">
+            <option value="0">Sharp (Linear)</option>
+            <option value="3">Pixel Lattice (Nearest)</option>
+            <option value="1">Smooth Blur</option>
+            <option value="2" selected>DoG (Reaction-Diff)</option>
+          </select>
+        </label>
+        <label class="chk">Aperture:
+          <select id="selAperture" style="flex:0; min-width:96px; padding:3px 5px;">
+            <option value="0" selected>None (Free)</option>
+            <option value="1">Outer Rim</option>
+            <option value="2">Triangle IFS</option>
+            <option value="3">Center Post</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label class="chk">Fold:
+          <select id="selFold" style="flex:0; min-width:56px; padding:3px 5px;">
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="3">3x</option>
+            <option value="4">4x</option>
+            <option value="6">6x</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" id="chkInvert" /> Invert Brightness</label>
+      </div>
+    </div>
+
+    <!-- 5. LIVE DYNAMICAL INSTRUMENT READOUTS -->
+    <div class="card">
+      <div class="card-title">
+        <span>5. Live Bifurcation Diagnostics</span>
+        <span class="badge accent" id="dynBadge">MEASURING</span>
+      </div>
+      <div class="diag-grid">
+        <div class="mini-box">
+          <div class="mini-label"><span>Space-Time Kymograph</span><span>x vs t</span></div>
+          <canvas id="kymoCanvas" class="diag" width="160" height="120"></canvas>
+        </div>
+        <div class="mini-box">
+          <div class="mini-label"><span>Poincar&eacute; Phase Portrait</span><span>I(t) vs I(t-1)</span></div>
+          <canvas id="poincareCanvas" class="diag" width="160" height="120"></canvas>
+        </div>
+      </div>
+      <div class="row" style="margin-top:7px; justify-content:space-between;">
+        <button id="btnSnapshot">Save PNG Snapshot</button>
+        <button id="btnExportPreset">Copy Preset JSON</button>
+      </div>
+    </div>
+
+    <div class="log-line" id="statusLog">Initialized in Simulated Camera mode. Click "Use Webcam" to connect your camera, frame the square in preview, and click "Auto-Lock Homography".</div>
+  </div>
+</div>
+
+<!-- Hidden video element for webcam -->
+<video id="webcamVideo" autoplay playsinline muted style="display:none;"></video>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. STATE & PARAMETERS
+  // =========================================================================
+  const CAVITY_RES = 512;
+  const RING_LEN = 16;
+  const PROBE_RES = 64;
+
+  const state = {
+    mode: 'sim', // 'sim' | 'webcam'
+    paused: false,
+    calibrating: false,
+    measuringTau: false,
+    ballastEnabled: true,
+    ballastTarget: 0.45,
+    ballastLuma: 0.45,
+    cavityLuma: 0.0,
+    measuredTauMs: null,
+
+    // Virtual optical bench params
+    mag: 1.02,
+    rotDeg: 0.6,
+    cx: 0.0,
+    cy: 0.0,
+    gain: 1.95,
+    bias: 0.0,
+    hueDeg: 8.0,
+    delayFrames: 1,
+    delayMix: 0.20,
+    filterMode: 2, // 0=linear, 1=blur, 2=DoG, 3=nearest lattice
+    apertureMode: 0, // 0=none, 1=outer rim, 2=triangle IFS, 3=center post
+    fold: 1,
+    invert: false,
+
+    // Calibration override rendering inside cavity
+    calDisplayMode: 0, // 0=normal feedback, 1=black, 2=white, 3=dot
+    calDotUV: [0.5, 0.5], // WebGL bottom-left UV
+
+    // Homography corners in camera normalized HTML coords (top-left origin: 0..1)
+    // Order: TL, TR, BR, BL of the cavity square as seen in the webcam image
+    quad: [
+      { x: 0.20, y: 0.15 },
+      { x: 0.80, y: 0.15 },
+      { x: 0.80, y: 0.85 },
+      { x: 0.20, y: 0.85 },
+    ],
+    homographyColMajor: new Float32Array([
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+    ]),
+
+    // Interactive drawing / seed injection
+    brushActive: false,
+    brushX: 0.5,
+    brushY: 0.5,
+    brushRadius: 0.045,
+    seedType: 0, // 0=none, 1=dot, 2=triangle, 3=noise, 4=clear
+    seedFramesLeft: 0,
+  };
+
+  const REGIMES = {
+    courtial: {
+      name: 'Courtial Lattice',
+      mag: 0.72,
+      rotDeg: 30.0,
+      cx: 0.0,
+      cy: 0.0,
+      gain: 1.55,
+      bias: 0.01,
+      hueDeg: 0,
+      delayFrames: 0,
+      delayMix: 0.0,
+      filterMode: 3,   // Pixel Lattice Nearest
+      apertureMode: 2, // Triangle IFS boundary anchor
+      fold: 1,
+      invert: false,
+      seed: 2,
+    },
+    crutchfield: {
+      name: 'Crutchfield Worms',
+      mag: 1.02,
+      rotDeg: 0.6,
+      cx: 0.0,
+      cy: 0.0,
+      gain: 1.95,
+      bias: 0.0,
+      hueDeg: 8,
+      delayFrames: 1,
+      delayMix: 0.20,
+      filterMode: 2,   // DoG reaction-diffusion
+      apertureMode: 0, // Free cavity
+      fold: 1,
+      invert: false,
+      seed: 3,         // sparse droplets
+    },
+    period2: {
+      name: 'Period-2 Crystal',
+      mag: 0.985,
+      rotDeg: 0.0,
+      cx: 0.0,
+      cy: 0.0,
+      gain: 1.55,
+      bias: 0.0,
+      hueDeg: 0,
+      delayFrames: 0,
+      delayMix: 0.0,
+      filterMode: 1,   // smooth spatial coupling
+      apertureMode: 1, // Outer rim anchors standing wave domains
+      fold: 1,
+      invert: true,    // Negative feedback -> Hopf / period-2
+      seed: 1,
+    },
+    vortex: {
+      name: 'Cavity Vortex',
+      mag: 0.94,
+      rotDeg: 7.5,
+      cx: 0.004,
+      cy: -0.004,
+      gain: 1.35,
+      bias: 0.015,
+      hueDeg: 28,
+      delayFrames: 3,
+      delayMix: 0.40,
+      filterMode: 1,
+      apertureMode: 1, // Outer rim continuously feeds spiral arms
+      fold: 1,
+      invert: false,
+      seed: 2,
+    },
+    raw: {
+      name: '1:1 Calibrated Mirror',
+      mag: 1.0,
+      rotDeg: 0.0,
+      cx: 0.0,
+      cy: 0.0,
+      gain: 1.0,
+      bias: 0.0,
+      hueDeg: 0,
+      delayFrames: 0,
+      delayMix: 0.0,
+      filterMode: 0,
+      apertureMode: 0,
+      fold: 1,
+      invert: false,
+      seed: 0,
+    }
+  };
+
+  // =========================================================================
+  // 2. DOM REFERENCES
+  // =========================================================================
+  const $ = (id) => document.getElementById(id);
+  const cavityCanvas = $('cavityCanvas');
+  const cavityWrap = $('cavityWrap');
+  const ballastFrame = $('ballastFrame');
+  const calOverlay = $('calOverlay');
+  const webcamVideo = $('webcamVideo');
+  const camPreview = $('camPreview');
+  const camPreviewCtx = camPreview.getContext('2d');
+  const kymoCanvas = $('kymoCanvas');
+  const kymoCtx = kymoCanvas.getContext('2d');
+  const poincareCanvas = $('poincareCanvas');
+  const poincareCtx = poincareCanvas.getContext('2d');
+
+  // Offscreen canvas for CPU centroid detection during calibration
+  const calCanvas = document.createElement('canvas');
+  calCanvas.width = 320;
+  calCanvas.height = 240;
+  const calCtx = calCanvas.getContext('2d', { willReadFrequently: true });
+
+  function logStatus(msg) {
+    $('statusLog').textContent = msg;
+  }
+
+  // =========================================================================
+  // 3. PROJECTIVE HOMOGRAPHY SOLVER (8x8 Gaussian Elimination)
+  // Maps cavity WebGL UV (u, v) -> camera WebGL UV (cam_u, cam_v)
+  // =========================================================================
+  function solveHomography(srcPts, dstPts) {
+    const A = [];
+    const b = [];
+    for (let i = 0; i < 4; i++) {
+      const [x, y] = srcPts[i];
+      const [u, v] = dstPts[i];
+      A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]);
+      b.push(u);
+      A.push([0, 0, 0, x, y, 1, -v * x, -v * y]);
+      b.push(v);
+    }
+
+    const n = 8;
+    const M = A.map((row, i) => [...row, b[i]]);
+    for (let col = 0; col < n; col++) {
+      let pivot = col;
+      let maxAbs = Math.abs(M[col][col]);
+      for (let r = col + 1; r < n; r++) {
+        if (Math.abs(M[r][col]) > maxAbs) {
+          maxAbs = Math.abs(M[r][col]);
+          pivot = r;
+        }
+      }
+      if (maxAbs < 1e-10) return null;
+      if (pivot !== col) {
+        const tmp = M[col];
+        M[col] = M[pivot];
+        M[pivot] = tmp;
+      }
+      const diag = M[col][col];
+      for (let c = col; c <= n; c++) M[col][c] /= diag;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const factor = M[r][col];
+        for (let c = col; c <= n; c++) M[r][c] -= factor * M[col][c];
+      }
+    }
+
+    const h = M.map(row => row[n]);
+    return [
+      h[0], h[1], h[2],
+      h[3], h[4], h[5],
+      h[6], h[7], 1.0,
+    ];
+  }
+
+  function applyHomographyRowMajor(H, x, y) {
+    const w = H[6] * x + H[7] * y + H[8];
+    return [
+      (H[0] * x + H[1] * y + H[2]) / w,
+      (H[3] * x + H[4] * y + H[5]) / w,
+    ];
+  }
+
+  function updateHomographyFromQuad() {
+    // Cavity corners in WebGL bottom-left UV: TL=(0,1), TR=(1,1), BR=(1,0), BL=(0,0)
+    const src = [[0, 1], [1, 1], [1, 0], [0, 0]];
+    const dst = state.quad.map(p => [p.x, 1.0 - p.y]);
+    const H = solveHomography(src, dst);
+    if (!H) return;
+    // GLSL mat3 is column-major
+    state.homographyColMajor.set([
+      H[0], H[3], H[6],
+      H[1], H[4], H[7],
+      H[2], H[5], H[8],
+    ]);
+  }
+  updateHomographyFromQuad();
+
+  // =========================================================================
+  // 4. WEBGL ENGINE (2-Pass Optical Loop + 16-Frame Ring Buffer + 64x64 Probe)
+  // =========================================================================
+  const gl = cavityCanvas.getContext('webgl', {
+    preserveDrawingBuffer: true,
+    antialias: false,
+    alpha: false,
+  });
+
+  if (!gl) {
+    alert('WebGL is required for Optical Cavity Lab.');
+    throw new Error('No WebGL');
+  }
+
+  function compileShader(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const err = gl.getShaderInfoLog(sh);
+      console.error(err, src);
+      throw new Error('Shader compile failed: ' + err);
+    }
+    return sh;
+  }
+
+  function createProgram(vsSrc, fsSrc) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      throw new Error('Program link failed: ' + gl.getProgramInfoLog(p));
+    }
+    return p;
+  }
+
+  const QUAD_VS = `
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main() {
+      v_uv = a_pos * 0.5 + 0.5;
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+  `;
+
+  // PASS 1A: Rectify real webcam via 3x3 homography into ringBuffer[head]
+  const RECTIFY_FS = `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_camTex;
+    uniform mat3 u_H;
+    void main() {
+      vec3 h = u_H * vec3(v_uv, 1.0);
+      vec2 cuv = h.xy / max(h.z, 1e-5);
+      if (cuv.x < 0.0 || cuv.x > 1.0 || cuv.y < 0.0 || cuv.y > 1.0) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      } else {
+        gl_FragColor = texture2D(u_camTex, cuv);
+      }
+    }
+  `;
+
+  // PASS 1B: Physical Camera Simulator (lens PSF + discrete CCD grid + sensor noise)
+  const SIMCAM_FS = `
+    precision highp float;
+    varying vec2 v_uv;
+    uniform sampler2D u_screenTex;
+    uniform float u_time;
+    uniform float u_pixelGrid;
+
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    void main() {
+      vec2 uv = v_uv;
+      if (u_pixelGrid > 0.5) {
+        uv = (floor(uv * 192.0) + 0.5) / 192.0;
+      }
+      vec2 tx = vec2(1.0 / 512.0);
+      // Mild optical lens blur PSF
+      vec3 c = texture2D(u_screenTex, uv).rgb * 0.44;
+      c += (
+        texture2D(u_screenTex, uv + vec2(tx.x, 0.0)).rgb +
+        texture2D(u_screenTex, uv - vec2(tx.x, 0.0)).rgb +
+        texture2D(u_screenTex, uv + vec2(0.0, tx.y)).rgb +
+        texture2D(u_screenTex, uv - vec2(0.0, tx.y)).rgb
+      ) * 0.10;
+      c += (
+        texture2D(u_screenTex, uv + vec2(tx.x, tx.y)).rgb +
+        texture2D(u_screenTex, uv + vec2(-tx.x, tx.y)).rgb +
+        texture2D(u_screenTex, uv + vec2(tx.x, -tx.y)).rgb +
+        texture2D(u_screenTex, uv + vec2(-tx.x, -tx.y)).rgb
+      ) * 0.04;
+
+      float n = (hash12(floor(v_uv * 256.0) + fract(u_time) * 97.0) - 0.5) * 0.020;
+      float r2 = dot(v_uv - 0.5, v_uv - 0.5);
+      float vig = 1.0 - 0.10 * r2;
+      c = clamp(c * vig + n, 0.0, 1.0);
+      gl_FragColor = vec4(c, 1.0);
+    }
+  `;
+
+  // PASS 2: Virtual Optical Bench (Transform + Filter + Delay + Gain/Invert/Hue + Aperture + Seeds)
+  const CAVITY_FS = `
+    precision highp float;
+    varying vec2 v_uv;
+
+    uniform sampler2D u_curTex;
+    uniform sampler2D u_delTex;
+    uniform vec2 u_res;
+    uniform float u_mag;
+    uniform float u_rotRad;
+    uniform vec2 u_center;
+    uniform float u_gain;
+    uniform float u_bias;
+    uniform float u_hueRad;
+    uniform float u_delayMix;
+    uniform int u_filterMode;   // 0=linear, 1=blur, 2=DoG, 3=nearest lattice
+    uniform int u_apertureMode; // 0=none, 1=outer rim, 2=triangle IFS, 3=center post
+    uniform int u_fold;
+    uniform float u_invert;
+    uniform float u_time;
+
+    // Calibration & interaction overlays
+    uniform int u_calMode;      // 0=normal, 1=black, 2=white, 3=dot
+    uniform vec2 u_calDot;
+    uniform float u_brushActive;
+    uniform vec2 u_brushPos;
+    uniform float u_brushRad;
+    uniform int u_seedType;     // 0=none, 1=dot, 2=triangle, 3=noise, 4=clear
+
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    vec3 hueRotate(vec3 col, float angle) {
+      float c = cos(angle);
+      float s = sin(angle);
+      vec3 k = vec3(0.57735027);
+      return col * c + cross(k, col) * s + k * dot(k, col) * (1.0 - c);
+    }
+
+    vec3 sampleFiltered(sampler2D tex, vec2 uv) {
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return vec3(0.0);
+      }
+      vec2 tx = 1.0 / u_res;
+
+      if (u_filterMode == 3) {
+        // Discrete pixel-grid lattice sampling (Courtial Nature 2001 mode)
+        vec2 q = (floor(uv * 160.0) + 0.5) / 160.0;
+        return texture2D(tex, q).rgb;
+      } else if (u_filterMode == 1) {
+        // Mild Gaussian spatial coupling
+        vec3 s = texture2D(tex, uv).rgb * 0.36;
+        s += (
+          texture2D(tex, uv + vec2(tx.x * 1.5, 0.0)).rgb +
+          texture2D(tex, uv - vec2(tx.x * 1.5, 0.0)).rgb +
+          texture2D(tex, uv + vec2(0.0, tx.y * 1.5)).rgb +
+          texture2D(tex, uv - vec2(0.0, tx.y * 1.5)).rgb
+        ) * 0.11;
+        s += (
+          texture2D(tex, uv + vec2(tx.x * 1.5, tx.y * 1.5)).rgb +
+          texture2D(tex, uv + vec2(-tx.x * 1.5, tx.y * 1.5)).rgb +
+          texture2D(tex, uv + vec2(tx.x * 1.5, -tx.y * 1.5)).rgb +
+          texture2D(tex, uv + vec2(-tx.x * 1.5, -tx.y * 1.5)).rgb
+        ) * 0.05;
+        return s;
+      } else if (u_filterMode == 2) {
+        // Difference-of-Gaussians (Crutchfield reaction-diffusion activator-inhibitor)
+        vec3 fine = texture2D(tex, uv).rgb * 0.40;
+        fine += (
+          texture2D(tex, uv + vec2(tx.x * 1.25, 0.0)).rgb +
+          texture2D(tex, uv - vec2(tx.x * 1.25, 0.0)).rgb +
+          texture2D(tex, uv + vec2(0.0, tx.y * 1.25)).rgb +
+          texture2D(tex, uv - vec2(0.0, tx.y * 1.25)).rgb
+        ) * 0.15;
+
+        vec3 broad = vec3(0.0);
+        float r = 5.5;
+        broad += texture2D(tex, uv + vec2( tx.x * r,  0.0)).rgb;
+        broad += texture2D(tex, uv + vec2(-tx.x * r,  0.0)).rgb;
+        broad += texture2D(tex, uv + vec2( 0.0,  tx.y * r)).rgb;
+        broad += texture2D(tex, uv + vec2( 0.0, -tx.y * r)).rgb;
+        broad += texture2D(tex, uv + vec2( tx.x * r * 0.7,  tx.y * r * 0.7)).rgb;
+        broad += texture2D(tex, uv + vec2(-tx.x * r * 0.7,  tx.y * r * 0.7)).rgb;
+        broad += texture2D(tex, uv + vec2( tx.x * r * 0.7, -tx.y * r * 0.7)).rgb;
+        broad += texture2D(tex, uv + vec2(-tx.x * r * 0.7, -tx.y * r * 0.7)).rgb;
+        broad *= 0.125;
+
+        return clamp(fine + 0.82 * (fine - broad), 0.0, 1.0);
+      }
+
+      return texture2D(tex, uv).rgb;
+    }
+
+    vec2 applySymmetryFold(vec2 p, int n) {
+      if (n <= 1) return p;
+      float r = length(p);
+      float a = atan(p.y, p.x);
+      float sector = 6.2831853 / float(n);
+      a = mod(a + 6.2831853, sector);
+      if (a > sector * 0.5) a = sector - a;
+      return vec2(cos(a), sin(a)) * r;
+    }
+
+    void main() {
+      // Calibration overrides
+      if (u_calMode == 1) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+      if (u_calMode == 2) {
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        return;
+      }
+      if (u_calMode == 3) {
+        float d = length(v_uv - u_calDot);
+        float spot = smoothstep(0.055, 0.045, d);
+        gl_FragColor = vec4(vec3(spot), 1.0);
+        return;
+      }
+
+      // Clear cavity command
+      if (u_seedType == 4) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+
+      // Transform coordinates around zoom center
+      vec2 p = v_uv - u_center;
+      p = applySymmetryFold(p, u_fold);
+
+      float c = cos(-u_rotRad);
+      float s = sin(-u_rotRad);
+      p = mat2(c, -s, s, c) * p;
+      p /= max(u_mag, 0.05);
+      vec2 srcUV = p + u_center;
+
+      vec3 colCur = sampleFiltered(u_curTex, srcUV);
+      vec3 col = colCur;
+      if (u_delayMix > 0.001) {
+        vec3 colDel = sampleFiltered(u_delTex, srcUV);
+        col = mix(colCur, colDel, u_delayMix);
+      }
+
+      // Nonlinear gain & offset around mid-gray (0.5)
+      col = (col - 0.5) * u_gain + 0.5 + u_bias;
+
+      // Soft S-curve saturation so feedback stabilizes into crisp attractors
+      col = clamp(col, 0.0, 1.0);
+      if (u_gain > 1.25) {
+        col = mix(col, col * col * (3.0 - 2.0 * col), clamp((u_gain - 1.25) * 0.55, 0.0, 0.65));
+      }
+
+      // Brightness inversion (Period-2 Hopf crystal)
+      if (u_invert > 0.5) {
+        col = 1.0 - col;
+      }
+
+      // Color channel phase rotation
+      if (abs(u_hueRad) > 0.001) {
+        col = clamp(hueRotate(col, u_hueRad), 0.0, 1.0);
+      }
+
+      // Persistent Optical Aperture Masks (equivalent to physical cavity boundary masks)
+      if (u_apertureMode == 1) {
+        // Thin bright outer rim boundary condition
+        float edge = min(min(v_uv.x, 1.0 - v_uv.x), min(v_uv.y, 1.0 - v_uv.y));
+        if (edge < 0.022 && edge > 0.006) {
+          col = mix(col, vec3(0.95, 0.88, 0.72), 0.78);
+        }
+      } else if (u_apertureMode == 2) {
+        // 3-vertex outer triangle + thin ring (Courtial IFS fractal driver)
+        float d1 = length(v_uv - vec2(0.50, 0.90));
+        float d2 = length(v_uv - vec2(0.15, 0.28));
+        float d3 = length(v_uv - vec2(0.85, 0.28));
+        float tri = max(max(smoothstep(0.036, 0.025, d1), smoothstep(0.036, 0.025, d2)),
+                        smoothstep(0.036, 0.025, d3));
+        float rim = smoothstep(0.010, 0.004, abs(length(v_uv - 0.5) - 0.44));
+        col = max(col, vec3(max(tri, rim * 0.75)));
+      } else if (u_apertureMode == 3) {
+        // Center post obstacle
+        float dc = length(v_uv - 0.5);
+        if (dc < 0.04) {
+          col = vec3(1.0);
+        }
+      }
+
+      // One-shot seed injections
+      if (u_seedType == 1) {
+        float d = length(v_uv - 0.5);
+        float dotShape = smoothstep(0.07, 0.055, d);
+        float ring = smoothstep(0.015, 0.005, abs(d - 0.22));
+        col = max(col, vec3(max(dotShape, ring)));
+      } else if (u_seedType == 2) {
+        float d1 = length(v_uv - vec2(0.50, 0.74));
+        float d2 = length(v_uv - vec2(0.28, 0.34));
+        float d3 = length(v_uv - vec2(0.72, 0.34));
+        float pts = max(max(smoothstep(0.045, 0.032, d1), smoothstep(0.045, 0.032, d2)),
+                        smoothstep(0.045, 0.032, d3));
+        col = max(col, vec3(pts));
+      } else if (u_seedType == 3) {
+        vec2 cell = floor(v_uv * 24.0);
+        vec2 f = fract(v_uv * 24.0) - 0.5;
+        float r = hash12(cell + floor(u_time * 10.0));
+        if (r > 0.85 && length(f) < 0.27) {
+          col = vec3(1.0);
+        }
+      }
+
+      // Interactive mouse brush perturbation
+      if (u_brushActive > 0.5) {
+        float bd = length(v_uv - u_brushPos);
+        if (bd < u_brushRad) {
+          float falloff = smoothstep(u_brushRad, u_brushRad * 0.35, bd);
+          col = mix(col, vec3(1.0, 0.96, 0.88), falloff);
+        }
+      }
+
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  // Simple blit shader (screen output and 64x64 probe downsample)
+  const BLIT_FS = `
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_tex;
+    void main() {
+      gl_FragColor = texture2D(u_tex, v_uv);
+    }
+  `;
+
+  const progRectify = createProgram(QUAD_VS, RECTIFY_FS);
+  const progSimCam  = createProgram(QUAD_VS, SIMCAM_FS);
+  const progCavity  = createProgram(QUAD_VS, CAVITY_FS);
+  const progBlit    = createProgram(QUAD_VS, BLIT_FS);
+
+  // Fullscreen quad VBO
+  const quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -1, -1,  1, -1,  -1, 1,
+    -1,  1,  1, -1,   1, 1,
+  ]), gl.STATIC_DRAW);
+
+  function bindQuad(prog) {
+    const loc = gl.getAttribLocation(prog, 'a_pos');
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  }
+
+  function createFBO(w, h, filter = gl.LINEAR) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { tex, fbo, w, h };
+  }
+
+  const ringFBOs = [];
+  for (let i = 0; i < RING_LEN; i++) {
+    ringFBOs.push(createFBO(CAVITY_RES, CAVITY_RES, gl.LINEAR));
+  }
+  let ringHead = 0;
+
+  const displayFBO = createFBO(CAVITY_RES, CAVITY_RES, gl.LINEAR);
+  const probeFBO = createFBO(PROBE_RES, PROBE_RES, gl.LINEAR);
+  const probePixels = new Uint8Array(PROBE_RES * PROBE_RES * 4);
+
+  const camTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, camTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16));
+
+  // =========================================================================
+  // 5. WEBCAM & UVC MANUAL CONTROL
+  // =========================================================================
+  let mediaStream = null;
+  let videoTrack = null;
+
+  async function refreshCameraList() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      const sel = $('cameraSelect');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      if (cams.length === 0) {
+        sel.innerHTML = '<option value="">No camera detected</option>';
+        return;
+      }
+      cams.forEach((c, idx) => {
+        const opt = document.createElement('option');
+        opt.value = c.deviceId;
+        opt.textContent = c.label || `Camera ${idx + 1}`;
+        sel.appendChild(opt);
+      });
+      if (prev) sel.value = prev;
+    } catch (e) {
+      console.warn('enumerateDevices failed', e);
+    }
+  }
+
+  async function startWebcam() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      logStatus('Camera API unavailable on this origin. Serve locally via "python3.13 -m http.server 8000" and open http://localhost:8000/optical_cavity_lab.html');
+      return;
+    }
+
+    stopWebcam();
+    const deviceId = $('cameraSelect').value;
+    const constraints = {
+      video: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 30 },
+      },
+      audio: false,
+    };
+
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      webcamVideo.srcObject = mediaStream;
+      await webcamVideo.play();
+      videoTrack = mediaStream.getVideoTracks()[0];
+      state.mode = 'webcam';
+      $('modeBadge').textContent = 'LIVE WEBCAM';
+      $('modeBadge').className = 'badge ok';
+      $('btnWebcam').classList.add('active');
+      $('btnSim').classList.remove('active');
+      $('btnAutoCal').disabled = false;
+      $('btnLatency').disabled = false;
+
+      await refreshCameraList();
+      await attemptUVCLock(videoTrack);
+      logStatus(`Webcam active (${webcamVideo.videoWidth}x${webcamVideo.videoHeight}). Frame the square in preview, then click "Auto-Lock Homography".`);
+    } catch (err) {
+      logStatus('Webcam error: ' + err.message + ' (If opened via file://, run python3.13 -m http.server 8000).');
+      switchToSim();
+    }
+  }
+
+  async function attemptUVCLock(track) {
+    if (!track || !track.getCapabilities) {
+      $('uvcBadge').textContent = 'BALLAST ONLY';
+      $('uvcBadge').className = 'badge warn';
+      $('uvcSliders').style.display = 'none';
+      return;
+    }
+    const caps = track.getCapabilities();
+    const adv = {};
+    const lockedFeatures = [];
+
+    if (caps.exposureMode && caps.exposureMode.includes('manual')) {
+      adv.exposureMode = 'manual';
+      lockedFeatures.push('AE');
+    }
+    if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('manual')) {
+      adv.whiteBalanceMode = 'manual';
+      lockedFeatures.push('WB');
+    }
+    if (caps.focusMode && caps.focusMode.includes('manual')) {
+      adv.focusMode = 'manual';
+      lockedFeatures.push('AF');
+    }
+
+    if (Object.keys(adv).length > 0) {
+      try {
+        await track.applyConstraints({ advanced: [adv] });
+        $('uvcBadge').textContent = 'UVC LOCK: ' + lockedFeatures.join('+');
+        $('uvcBadge').className = 'badge ok';
+      } catch (e) {
+        $('uvcBadge').textContent = 'UVC LOCK DENIED';
+        $('uvcBadge').className = 'badge warn';
+      }
+    } else {
+      $('uvcBadge').textContent = 'NO UVC LOCK • USE BALLAST';
+      $('uvcBadge').className = 'badge warn';
+    }
+
+    if (caps.exposureTime && typeof caps.exposureTime.min === 'number') {
+      const sl = $('uvcExposure');
+      sl.min = caps.exposureTime.min;
+      sl.max = caps.exposureTime.max;
+      sl.step = caps.exposureTime.step || 1;
+      const settings = track.getSettings ? track.getSettings() : {};
+      sl.value = settings.exposureTime || Math.round((caps.exposureTime.min + caps.exposureTime.max) * 0.25);
+      $('uvcExposureVal').textContent = sl.value;
+      $('uvcSliders').style.display = 'block';
+    } else {
+      $('uvcSliders').style.display = 'none';
+    }
+  }
+
+  function stopWebcam() {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop());
+      mediaStream = null;
+      videoTrack = null;
+    }
+  }
+
+  function switchToSim() {
+    stopWebcam();
+    state.mode = 'sim';
+    $('modeBadge').textContent = 'SIM CAMERA';
+    $('modeBadge').className = 'badge accent';
+    $('uvcBadge').textContent = 'SIMULATED';
+    $('uvcBadge').className = 'badge';
+    $('uvcSliders').style.display = 'none';
+    $('btnSim').classList.add('active');
+    $('btnWebcam').classList.remove('active');
+    $('btnAutoCal').disabled = true;
+    $('btnLatency').disabled = true;
+    triggerSeed(state.filterMode === 3 ? 2 : 3);
+    logStatus('Simulated Camera active: virtual lens PSF + sensor pixel grid + shot noise running in WebGL.');
+  }
+
+  // =========================================================================
+  // 6. AUTO-LOCK HOMOGRAPHY & ROUND-TRIP LATENCY PROBE
+  // =========================================================================
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+
+  function grabCalLuma() {
+    calCtx.drawImage(webcamVideo, 0, 0, calCanvas.width, calCanvas.height);
+    const data = calCtx.getImageData(0, 0, calCanvas.width, calCanvas.height).data;
+    const out = new Float32Array(calCanvas.width * calCanvas.height);
+    for (let i = 0, j = 0; i < out.length; i++, j += 4) {
+      out[i] = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+    }
+    return out;
+  }
+
+  function findPeakCentroid(frame, dark) {
+    const w = calCanvas.width;
+    const h = calCanvas.height;
+    let maxVal = 0;
+    let maxX = 0, maxY = 0;
+    for (let y = 2; y < h - 2; y++) {
+      for (let x = 2; x < w - 2; x++) {
+        const idx = y * w + x;
+        const d = frame[idx] - dark[idx];
+        if (d > maxVal) {
+          maxVal = d;
+          maxX = x;
+          maxY = y;
+        }
+      }
+    }
+    if (maxVal < 18) return null;
+
+    const thresh = maxVal * 0.50;
+    let sumW = 0, sumX = 0, sumY = 0;
+    const r = 28;
+    const x0 = Math.max(0, maxX - r), x1 = Math.min(w - 1, maxX + r);
+    const y0 = Math.max(0, maxY - r), y1 = Math.min(h - 1, maxY + r);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const d = frame[y * w + x] - dark[y * w + x];
+        if (d >= thresh) {
+          const wt = d - thresh + 1.0;
+          sumW += wt;
+          sumX += x * wt;
+          sumY += y * wt;
+        }
+      }
+    }
+    if (sumW <= 0) return null;
+    return {
+      x: (sumX / sumW) / w,
+      y: (sumY / sumW) / h,
+      contrast: maxVal,
+    };
+  }
+
+  async function runAutoCalibration() {
+    if (state.mode !== 'webcam' || state.calibrating) return;
+    state.calibrating = true;
+    const prevBallast = state.ballastEnabled;
+    state.ballastEnabled = false;
+    ballastFrame.classList.add('off');
+
+    try {
+      calOverlay.textContent = 'CALIBRATING: DARK FRAME...';
+      state.calDisplayMode = 1; // black
+      await sleep(420);
+      const dark = grabCalLuma();
+
+      // 4 inner markers in WebGL UV (bottom-left origin): TL, TR, BR, BL
+      const markerUVs = [
+        [0.18, 0.82],
+        [0.82, 0.82],
+        [0.82, 0.18],
+        [0.18, 0.18],
+      ];
+      const detected = [];
+
+      for (let i = 0; i < 4; i++) {
+        calOverlay.textContent = `CALIBRATING: CORNER ${i + 1}/4`;
+        state.calDisplayMode = 3;
+        state.calDotUV = markerUVs[i];
+        await sleep(340);
+        const frame = grabCalLuma();
+        const pt = findPeakCentroid(frame, dark);
+        if (!pt) {
+          throw new Error(`Could not detect bright marker ${i + 1}/4 (too dim or out of camera view).`);
+        }
+        detected.push(pt);
+      }
+
+      const dstWebGL = detected.map(p => [p.x, 1.0 - p.y]);
+      const H = solveHomography(markerUVs, dstWebGL);
+      if (!H) throw new Error('Degenerate corner geometry.');
+
+      const outerCavity = [[0, 1], [1, 1], [1, 0], [0, 0]];
+      const newQuad = outerCavity.map(([u, v]) => {
+        const [cu, cv] = applyHomographyRowMajor(H, u, v);
+        return {
+          x: Math.max(0.0, Math.min(1.0, cu)),
+          y: Math.max(0.0, Math.min(1.0, 1.0 - cv)),
+        };
+      });
+
+      state.quad = newQuad;
+      updateHomographyFromQuad();
+
+      const minContrast = Math.min(...detected.map(d => d.contrast)).toFixed(0);
+      $('quadBadge').textContent = `LOCKED (contrast ${minContrast})`;
+      $('quadBadge').className = 'badge ok';
+      logStatus(`Auto-Lock succeeded! Min marker contrast: ${minContrast}/255. Homography locked to camera.`);
+    } catch (err) {
+      $('quadBadge').textContent = 'CAL FAILED — DRAG CORNERS';
+      $('quadBadge').className = 'badge danger';
+      logStatus('Auto-Lock failed: ' + err.message + ' You can also drag the 4 green corners manually.');
+    } finally {
+      state.calDisplayMode = 0;
+      calOverlay.textContent = '';
+      state.ballastEnabled = prevBallast;
+      ballastFrame.classList.toggle('off', !prevBallast);
+      state.calibrating = false;
+    }
+  }
+
+  function meanCameraROI() {
+    calCtx.drawImage(webcamVideo, 0, 0, calCanvas.width, calCanvas.height);
+    const data = calCtx.getImageData(0, 0, calCanvas.width, calCanvas.height).data;
+    const cx = (state.quad[0].x + state.quad[1].x + state.quad[2].x + state.quad[3].x) * 0.25;
+    const cy = (state.quad[0].y + state.quad[1].y + state.quad[2].y + state.quad[3].y) * 0.25;
+    const px = Math.round(cx * calCanvas.width);
+    const py = Math.round(cy * calCanvas.height);
+    const r = 12;
+    let sum = 0, cnt = 0;
+    for (let y = Math.max(0, py - r); y <= Math.min(calCanvas.height - 1, py + r); y++) {
+      for (let x = Math.max(0, px - r); x <= Math.min(calCanvas.width - 1, px + r); x++) {
+        const idx = (y * calCanvas.width + x) * 4;
+        sum += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        cnt++;
+      }
+    }
+    return cnt > 0 ? sum / cnt : 0;
+  }
+
+  async function measureLatency() {
+    if (state.mode !== 'webcam' || state.calibrating || state.measuringTau) return;
+    state.measuringTau = true;
+    const prevBallast = state.ballastEnabled;
+    state.ballastEnabled = false;
+    ballastFrame.classList.add('off');
+
+    try {
+      calOverlay.textContent = 'MEASURING ROUND-TRIP DELAY...';
+      state.calDisplayMode = 1; // black
+      await sleep(450);
+      const base = meanCameraROI();
+
+      // Switch to white and sync start timestamp to the actual paint frame
+      state.calDisplayMode = 2;
+      await nextFrame();
+      const t0 = performance.now();
+      let tauMs = null;
+      let frames = 0;
+      while (performance.now() - t0 < 1200) {
+        await nextFrame();
+        frames++;
+        const cur = meanCameraROI();
+        if (cur - base > 18) {
+          tauMs = performance.now() - t0;
+          break;
+        }
+      }
+
+      if (tauMs !== null) {
+        state.measuredTauMs = tauMs;
+        $('statTau').textContent = `${tauMs.toFixed(0)} ms (${frames}f)`;
+        logStatus(`Measured physical optical + USB round-trip delay: ${tauMs.toFixed(1)} ms (~${frames} display frames).`);
+      } else {
+        $('statTau').textContent = 'NO SIGNAL';
+        logStatus('Latency probe saw no brightness jump in quad center. Check camera aim and quad alignment.');
+      }
+    } finally {
+      state.calDisplayMode = 0;
+      calOverlay.textContent = '';
+      state.ballastEnabled = prevBallast;
+      ballastFrame.classList.toggle('off', !prevBallast);
+      state.measuringTau = false;
+    }
+  }
+
+  // =========================================================================
+  // 7. RAW CAMERA PREVIEW + DRAGGABLE HOMOGRAPHY CORNERS
+  // =========================================================================
+  let draggingCorner = -1;
+
+  function drawCamPreview() {
+    const w = camPreview.width;
+    const h = camPreview.height;
+    camPreviewCtx.fillStyle = '#090b0f';
+    camPreviewCtx.fillRect(0, 0, w, h);
+
+    if (state.mode === 'webcam' && webcamVideo.readyState >= 2) {
+      camPreviewCtx.drawImage(webcamVideo, 0, 0, w, h);
+    } else {
+      camPreviewCtx.drawImage(cavityCanvas, (w - h) * 0.5, 0, h, h);
+      camPreviewCtx.fillStyle = 'rgba(0,0,0,0.52)';
+      camPreviewCtx.fillRect(6, 6, 158, 18);
+      camPreviewCtx.fillStyle = '#4cc9f0';
+      camPreviewCtx.font = '10px monospace';
+      camPreviewCtx.fillText('SIMULATED OPTICAL LOOP', 12, 18);
+      return;
+    }
+
+    const pts = state.quad.map(p => ({ x: p.x * w, y: p.y * h }));
+    camPreviewCtx.strokeStyle = '#3ddc97';
+    camPreviewCtx.lineWidth = 1.6;
+    camPreviewCtx.beginPath();
+    camPreviewCtx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < 4; i++) camPreviewCtx.lineTo(pts[i].x, pts[i].y);
+    camPreviewCtx.closePath();
+    camPreviewCtx.stroke();
+
+    const labels = ['TL', 'TR', 'BR', 'BL'];
+    pts.forEach((p, idx) => {
+      camPreviewCtx.fillStyle = idx === draggingCorner ? '#ffb703' : '#3ddc97';
+      camPreviewCtx.beginPath();
+      camPreviewCtx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      camPreviewCtx.fill();
+      camPreviewCtx.fillStyle = '#000';
+      camPreviewCtx.font = 'bold 8px monospace';
+      camPreviewCtx.fillText(labels[idx], p.x - 5, p.y + 3);
+    });
+  }
+
+  function previewCoords(e) {
+    const rect = camPreview.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+    };
+  }
+
+  camPreview.addEventListener('pointerdown', (e) => {
+    if (state.mode !== 'webcam') return;
+    const pt = previewCoords(e);
+    let best = -1, bestD = 0.08;
+    state.quad.forEach((q, idx) => {
+      const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+      if (d < bestD) { bestD = d; best = idx; }
+    });
+    if (best !== -1) {
+      draggingCorner = best;
+      camPreview.setPointerCapture(e.pointerId);
+    }
+  });
+
+  camPreview.addEventListener('pointermove', (e) => {
+    if (draggingCorner === -1) return;
+    state.quad[draggingCorner] = previewCoords(e);
+    updateHomographyFromQuad();
+    $('quadBadge').textContent = 'MANUAL QUAD';
+    $('quadBadge').className = 'badge accent';
+  });
+
+  camPreview.addEventListener('pointerup', () => { draggingCorner = -1; });
+
+  // =========================================================================
+  // 8. LIVE DIAGNOSTICS (KYMOGRAPH, POINCARE PHASE PORTRAIT, REGIME DETECTOR)
+  // =========================================================================
+  const HISTORY_LEN = 120;
+  const centerHistory = new Float32Array(HISTORY_LEN);
+  let histPtr = 0;
+  let histCount = 0;
+
+  kymoCtx.fillStyle = '#090b0f';
+  kymoCtx.fillRect(0, 0, kymoCanvas.width, kymoCanvas.height);
+
+  function updateDiagnosticsFromProbe() {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, probeFBO.fbo);
+    gl.readPixels(0, 0, PROBE_RES, PROBE_RES, gl.RGBA, gl.UNSIGNED_BYTE, probePixels);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // 1. Mean cavity luminance -> AE Ballast Border
+    let sumL = 0;
+    const totalPx = PROBE_RES * PROBE_RES;
+    for (let i = 0; i < probePixels.length; i += 4) {
+      sumL += (0.299 * probePixels[i] + 0.587 * probePixels[i + 1] + 0.114 * probePixels[i + 2]);
+    }
+    const meanL = sumL / (totalPx * 255.0);
+    state.cavityLuma = meanL;
+
+    if (state.ballastEnabled && !state.calibrating && !state.measuringTau) {
+      const target = state.ballastTarget;
+      const desired = Math.max(0.0, Math.min(1.0, target + 1.05 * (target - meanL)));
+      state.ballastLuma = state.ballastLuma * 0.65 + desired * 0.35;
+      const v = Math.round(state.ballastLuma * 255);
+      ballastFrame.style.background = `rgb(${v},${v},${v})`;
+    }
+
+    $('statLuma').textContent = meanL.toFixed(2);
+    $('statBallast').textContent = state.ballastEnabled ? state.ballastLuma.toFixed(2) : 'OFF';
+
+    // 2. Scroll Kymograph (center horizontal slice x vs time t)
+    const midRow = PROBE_RES >> 1;
+    const kw = kymoCanvas.width;
+    const kh = kymoCanvas.height;
+    kymoCtx.drawImage(kymoCanvas, 0, 1, kw, kh - 1, 0, 0, kw, kh - 1);
+    const rowImg = kymoCtx.createImageData(kw, 1);
+    for (let x = 0; x < kw; x++) {
+      const px = Math.min(PROBE_RES - 1, Math.floor((x / kw) * PROBE_RES));
+      const srcIdx = (midRow * PROBE_RES + px) * 4;
+      const dstIdx = x * 4;
+      rowImg.data[dstIdx]     = probePixels[srcIdx];
+      rowImg.data[dstIdx + 1] = probePixels[srcIdx + 1];
+      rowImg.data[dstIdx + 2] = probePixels[srcIdx + 2];
+      rowImg.data[dstIdx + 3] = 255;
+    }
+    kymoCtx.putImageData(rowImg, 0, kh - 1);
+
+    // 3. Center 4x4 patch -> Poincare phase portrait I(t) vs I(t-1)
+    let cSum = 0;
+    for (let dy = -2; dy < 2; dy++) {
+      for (let dx = -2; dx < 2; dx++) {
+        const idx = ((midRow + dy) * PROBE_RES + (midRow + dx)) * 4;
+        cSum += (0.299 * probePixels[idx] + 0.587 * probePixels[idx + 1] + 0.114 * probePixels[idx + 2]) / 255.0;
+      }
+    }
+    const cVal = cSum / 16.0;
+    centerHistory[histPtr] = cVal;
+    histPtr = (histPtr + 1) % HISTORY_LEN;
+    histCount = Math.min(HISTORY_LEN, histCount + 1);
+
+    const pw = poincareCanvas.width;
+    const ph = poincareCanvas.height;
+    poincareCtx.fillStyle = '#090b0f';
+    poincareCtx.fillRect(0, 0, pw, ph);
+
+    poincareCtx.strokeStyle = '#1f2533';
+    poincareCtx.lineWidth = 1;
+    poincareCtx.beginPath();
+    poincareCtx.moveTo(8, ph - 8);
+    poincareCtx.lineTo(pw - 8, 8);
+    poincareCtx.stroke();
+
+    if (histCount > 4) {
+      let meanH = 0;
+      const ordered = [];
+      const start = (histPtr - histCount + HISTORY_LEN) % HISTORY_LEN;
+      for (let i = 0; i < histCount; i++) {
+        const v = centerHistory[(start + i) % HISTORY_LEN];
+        ordered.push(v);
+        meanH += v;
+      }
+      meanH /= ordered.length;
+
+      poincareCtx.beginPath();
+      for (let i = 1; i < ordered.length; i++) {
+        const x = 8 + ordered[i - 1] * (pw - 16);
+        const y = (ph - 8) - ordered[i] * (ph - 16);
+        if (i === 1) poincareCtx.moveTo(x, y);
+        else poincareCtx.lineTo(x, y);
+      }
+      poincareCtx.strokeStyle = 'rgba(76, 201, 240, 0.45)';
+      poincareCtx.lineWidth = 1.2;
+      poincareCtx.stroke();
+
+      for (let i = Math.max(1, ordered.length - 20); i < ordered.length; i++) {
+        const alpha = (i - (ordered.length - 20)) / 20;
+        const x = 8 + ordered[i - 1] * (pw - 16);
+        const y = (ph - 8) - ordered[i] * (ph - 16);
+        poincareCtx.fillStyle = `rgba(247, 37, 133, ${0.25 + 0.75 * alpha})`;
+        poincareCtx.fillRect(x - 1.5, y - 1.5, 3, 3);
+      }
+
+      // Dynamical regime classification
+      let varH = 0, ac1 = 0, diffSum = 0;
+      for (let i = 0; i < ordered.length; i++) {
+        const d = ordered[i] - meanH;
+        varH += d * d;
+        if (i > 0) {
+          ac1 += d * (ordered[i - 1] - meanH);
+          diffSum += Math.abs(ordered[i] - ordered[i - 1]);
+        }
+      }
+      const stdH = Math.sqrt(varH / ordered.length);
+      const corr1 = varH > 1e-6 ? ac1 / varH : 1.0;
+      const meanStep = diffSum / (ordered.length - 1);
+
+      const badge = $('dynBadge');
+      if (stdH < 0.015) {
+        badge.textContent = meanL < 0.04 ? 'EXTINCT / DARK' : (meanL > 0.96 ? 'SATURATED' : 'FIXED POINT');
+        badge.className = 'badge ok';
+      } else if (corr1 < -0.35 && meanStep > 0.05) {
+        badge.textContent = 'PERIOD-2 OSCILLATION';
+        badge.className = 'badge accent';
+      } else if (corr1 > 0.65) {
+        badge.textContent = 'WAVE / LIMIT CYCLE';
+        badge.className = 'badge accent';
+      } else {
+        badge.textContent = 'CHAOTIC / TURBULENT';
+        badge.className = 'badge warn';
+      }
+    }
+  }
+
+  // =========================================================================
+  // 9. RENDER LOOP
+  // =========================================================================
+  let frameCounter = 0;
+  let fpsFrames = 0;
+  let fpsLast = performance.now();
+
+  function renderFrame(now) {
+    requestAnimationFrame(renderFrame);
+
+    fpsFrames++;
+    if (now - fpsLast >= 500) {
+      const fps = Math.round((fpsFrames * 1000) / (now - fpsLast));
+      $('fpsBadge').textContent = `${fps} FPS`;
+      fpsFrames = 0;
+      fpsLast = now;
+    }
+
+    if (state.paused && !state.calibrating && !state.measuringTau) {
+      drawCamPreview();
+      return;
+    }
+
+    const timeSec = now * 0.001;
+    frameCounter++;
+
+    // --- PASS 1: Capture / Rectify into ringFBOs[ringHead] ---
+    const targetRing = ringFBOs[ringHead];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, targetRing.fbo);
+    gl.viewport(0, 0, CAVITY_RES, CAVITY_RES);
+
+    if (state.mode === 'webcam' && webcamVideo.readyState >= 2) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, camTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, webcamVideo);
+
+      gl.useProgram(progRectify);
+      bindQuad(progRectify);
+      gl.uniform1i(gl.getUniformLocation(progRectify, 'u_camTex'), 0);
+      gl.uniformMatrix3fv(gl.getUniformLocation(progRectify, 'u_H'), false, state.homographyColMajor);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } else {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, displayFBO.tex);
+      gl.useProgram(progSimCam);
+      bindQuad(progSimCam);
+      gl.uniform1i(gl.getUniformLocation(progSimCam, 'u_screenTex'), 0);
+      gl.uniform1f(gl.getUniformLocation(progSimCam, 'u_time'), timeSec);
+      gl.uniform1f(gl.getUniformLocation(progSimCam, 'u_pixelGrid'), state.filterMode === 3 ? 1.0 : 0.0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    // --- PASS 2: Virtual Optical Bench -> displayFBO ---
+    const delIdx = (ringHead - state.delayFrames + RING_LEN) % RING_LEN;
+    const curTex = ringFBOs[ringHead].tex;
+    const delTex = ringFBOs[delIdx].tex;
+
+    const texFilter = state.filterMode === 3 ? gl.NEAREST : gl.LINEAR;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, curTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, texFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, texFilter);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, delTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, texFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, texFilter);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, displayFBO.fbo);
+    gl.viewport(0, 0, CAVITY_RES, CAVITY_RES);
+    gl.useProgram(progCavity);
+    bindQuad(progCavity);
+
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_curTex'), 0);
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_delTex'), 1);
+    gl.uniform2f(gl.getUniformLocation(progCavity, 'u_res'), CAVITY_RES, CAVITY_RES);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_mag'), state.mag);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_rotRad'), state.rotDeg * Math.PI / 180.0);
+    gl.uniform2f(gl.getUniformLocation(progCavity, 'u_center'), 0.5 + state.cx, 0.5 + state.cy);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_gain'), state.gain);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_bias'), state.bias);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_hueRad'), state.hueDeg * Math.PI / 180.0);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_delayMix'), state.delayFrames > 0 ? state.delayMix : 0.0);
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_filterMode'), state.filterMode);
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_apertureMode'), state.apertureMode);
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_fold'), state.fold);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_invert'), state.invert ? 1.0 : 0.0);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_time'), timeSec);
+
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_calMode'), state.calDisplayMode);
+    gl.uniform2f(gl.getUniformLocation(progCavity, 'u_calDot'), state.calDotUV[0], state.calDotUV[1]);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_brushActive'), state.brushActive ? 1.0 : 0.0);
+    gl.uniform2f(gl.getUniformLocation(progCavity, 'u_brushPos'), state.brushX, state.brushY);
+    gl.uniform1f(gl.getUniformLocation(progCavity, 'u_brushRad'), state.brushRadius);
+    gl.uniform1i(gl.getUniformLocation(progCavity, 'u_seedType'), state.seedFramesLeft > 0 ? state.seedType : 0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    if (state.seedFramesLeft > 0) state.seedFramesLeft--;
+
+    // --- PASS 3: Blit displayFBO -> Main Cavity Screen ---
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, CAVITY_RES, CAVITY_RES);
+    gl.useProgram(progBlit);
+    bindQuad(progBlit);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, displayFBO.tex);
+    gl.uniform1i(gl.getUniformLocation(progBlit, 'u_tex'), 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // --- PASS 4: Downsample displayFBO -> 64x64 probeFBO & update telemetry ---
+    gl.bindFramebuffer(gl.FRAMEBUFFER, probeFBO.fbo);
+    gl.viewport(0, 0, PROBE_RES, PROBE_RES);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    updateDiagnosticsFromProbe();
+    if (frameCounter % 2 === 0) drawCamPreview();
+
+    ringHead = (ringHead + 1) % RING_LEN;
+  }
+
+  // =========================================================================
+  // 10. UI BINDINGS & PRESET MANAGEMENT
+  // =========================================================================
+  function triggerSeed(type, frames = 3) {
+    state.seedType = type;
+    state.seedFramesLeft = frames;
+  }
+
+  function syncSlidersToState() {
+    $('slMag').value = state.mag;
+    $('valMag').textContent = state.mag.toFixed(3);
+    $('slRot').value = state.rotDeg;
+    $('valRot').textContent = state.rotDeg.toFixed(1) + '\u00b0';
+    $('slCx').value = state.cx;
+    $('valCx').textContent = state.cx.toFixed(3);
+    $('slCy').value = state.cy;
+    $('valCy').textContent = state.cy.toFixed(3);
+    $('slGain').value = state.gain;
+    $('valGain').textContent = state.gain.toFixed(2);
+    $('slBias').value = state.bias;
+    $('valBias').textContent = state.bias.toFixed(3);
+    $('slHue').value = state.hueDeg;
+    $('valHue').textContent = Math.round(state.hueDeg) + '\u00b0';
+    $('slDelay').value = state.delayFrames;
+    $('valDelay').textContent = String(state.delayFrames);
+    $('slDelayMix').value = state.delayMix;
+    $('valDelayMix').textContent = state.delayMix.toFixed(2);
+    $('selFilter').value = String(state.filterMode);
+    $('selAperture').value = String(state.apertureMode);
+    $('selFold').value = String(state.fold);
+    $('chkInvert').checked = state.invert;
+  }
+
+  function applyRegime(key) {
+    const r = REGIMES[key];
+    if (!r) return;
+    state.mag = r.mag;
+    state.rotDeg = r.rotDeg;
+    state.cx = r.cx;
+    state.cy = r.cy;
+    state.gain = r.gain;
+    state.bias = r.bias;
+    state.hueDeg = r.hueDeg;
+    state.delayFrames = r.delayFrames;
+    state.delayMix = r.delayMix;
+    state.filterMode = r.filterMode;
+    state.apertureMode = r.apertureMode;
+    state.fold = r.fold;
+    state.invert = r.invert;
+    syncSlidersToState();
+
+    document.querySelectorAll('.regime-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.regime === key);
+    });
+    $('regimeStateBadge').textContent = r.name.toUpperCase();
+
+    if (r.seed > 0) {
+      triggerSeed(4, 1);
+      setTimeout(() => triggerSeed(r.seed, 4), 40);
+    }
+    logStatus(`Loaded regime: ${r.name} (M=${r.mag}, \u03b8=${r.rotDeg}\u00b0, aperture=${$('selAperture').selectedOptions[0].text}).`);
+  }
+
+  document.querySelectorAll('.regime-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyRegime(btn.dataset.regime));
+  });
+
+  function bindSlider(id, valId, key, fmt) {
+    $(id).addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      state[key] = v;
+      $(valId).textContent = fmt(v);
+    });
+  }
+
+  bindSlider('slMag', 'valMag', 'mag', v => v.toFixed(3));
+  bindSlider('slRot', 'valRot', 'rotDeg', v => v.toFixed(1) + '\u00b0');
+  bindSlider('slCx', 'valCx', 'cx', v => v.toFixed(3));
+  bindSlider('slCy', 'valCy', 'cy', v => v.toFixed(3));
+  bindSlider('slGain', 'valGain', 'gain', v => v.toFixed(2));
+  bindSlider('slBias', 'valBias', 'bias', v => v.toFixed(3));
+  bindSlider('slHue', 'valHue', 'hueDeg', v => Math.round(v) + '\u00b0');
+  bindSlider('slDelay', 'valDelay', 'delayFrames', v => String(Math.round(v)));
+  bindSlider('slDelayMix', 'valDelayMix', 'delayMix', v => v.toFixed(2));
+  bindSlider('slBallastTarget', 'valBallastTarget', 'ballastTarget', v => v.toFixed(2));
+
+  $('selFilter').addEventListener('change', (e) => { state.filterMode = parseInt(e.target.value, 10); });
+  $('selAperture').addEventListener('change', (e) => { state.apertureMode = parseInt(e.target.value, 10); });
+  $('selFold').addEventListener('change', (e) => { state.fold = parseInt(e.target.value, 10); });
+  $('chkInvert').addEventListener('change', (e) => { state.invert = e.target.checked; });
+  $('chkPause').addEventListener('change', (e) => { state.paused = e.target.checked; });
+  $('chkBallast').addEventListener('change', (e) => {
+    state.ballastEnabled = e.target.checked;
+    ballastFrame.classList.toggle('off', !state.ballastEnabled);
+  });
+
+  $('selSize').addEventListener('change', (e) => {
+    const px = parseInt(e.target.value, 10);
+    cavityWrap.style.width = px + 'px';
+    cavityWrap.style.height = px + 'px';
+  });
+
+  $('uvcExposure').addEventListener('input', async (e) => {
+    const val = parseFloat(e.target.value);
+    $('uvcExposureVal').textContent = val;
+    if (videoTrack) {
+      try {
+        await videoTrack.applyConstraints({ advanced: [{ exposureMode: 'manual', exposureTime: val }] });
+      } catch (_) {}
+    }
+  });
+
+  $('btnWebcam').addEventListener('click', startWebcam);
+  $('btnSim').addEventListener('click', switchToSim);
+  $('cameraSelect').addEventListener('change', () => {
+    if (state.mode === 'webcam') startWebcam();
+  });
+  $('btnAutoCal').addEventListener('click', runAutoCalibration);
+  $('btnLatency').addEventListener('click', measureLatency);
+  $('btnResetQuad').addEventListener('click', () => {
+    state.quad = [
+      { x: 0.20, y: 0.15 },
+      { x: 0.80, y: 0.15 },
+      { x: 0.80, y: 0.85 },
+      { x: 0.20, y: 0.85 },
+    ];
+    updateHomographyFromQuad();
+    $('quadBadge').textContent = 'QUAD RESET';
+    $('quadBadge').className = 'badge';
+  });
+
+  $('btnSeedDot').addEventListener('click', () => triggerSeed(1, 4));
+  $('btnSeedTri').addEventListener('click', () => triggerSeed(2, 4));
+  $('btnSeedNoise').addEventListener('click', () => triggerSeed(3, 3));
+  $('btnBlackout').addEventListener('click', () => triggerSeed(4, 3));
+
+  function setBrushFromEvent(e) {
+    const rect = cavityCanvas.getBoundingClientRect();
+    state.brushX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    state.brushY = 1.0 - Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+  }
+  cavityCanvas.addEventListener('pointerdown', (e) => {
+    state.brushActive = true;
+    setBrushFromEvent(e);
+    cavityCanvas.setPointerCapture(e.pointerId);
+  });
+  cavityCanvas.addEventListener('pointermove', (e) => {
+    if (state.brushActive) setBrushFromEvent(e);
+  });
+  cavityCanvas.addEventListener('pointerup', () => { state.brushActive = false; });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      triggerSeed(1, 3);
+    } else if (e.key === 'r' || e.key === 'R') {
+      triggerSeed(3, 3);
+    }
+  });
+
+  $('btnSnapshot').addEventListener('click', () => {
+    const out = document.createElement('canvas');
+    out.width = 720;
+    out.height = 512;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#0b0d12';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(cavityCanvas, 0, 0, 512, 512);
+    ctx.drawImage(kymoCanvas, 524, 24, 184, 140);
+    ctx.drawImage(poincareCanvas, 524, 194, 184, 140);
+    ctx.fillStyle = '#d9e0f0';
+    ctx.font = '11px monospace';
+    ctx.fillText('KYMOGRAPH (x vs t)', 524, 16);
+    ctx.fillText('POINCARE I(t) vs I(t-1)', 524, 186);
+    const lines = [
+      `MODE: ${state.mode.toUpperCase()}`,
+      `M = ${state.mag.toFixed(3)}`,
+      `ROT = ${state.rotDeg.toFixed(1)} deg`,
+      `GAIN = ${state.gain.toFixed(2)}  BIAS = ${state.bias.toFixed(3)}`,
+      `DELAY = ${state.delayFrames}f (${state.delayMix.toFixed(2)})`,
+      `INVERT = ${state.invert}`,
+      `TAU = ${state.measuredTauMs ? state.measuredTauMs.toFixed(0) + ' ms' : 'N/A'}`,
+      `STATE = ${$('dynBadge').textContent}`,
+    ];
+    lines.forEach((ln, i) => ctx.fillText(ln, 524, 362 + i * 17));
+
+    const a = document.createElement('a');
+    a.download = `optical_cavity_${Date.now()}.png`;
+    a.href = out.toDataURL('image/png');
+    a.click();
+    logStatus('Saved PNG snapshot with kymograph, Poincare portrait, and bench telemetry.');
+  });
+
+  $('btnExportPreset').addEventListener('click', async () => {
+    const preset = {
+      mode: state.mode,
+      mag: state.mag,
+      rotDeg: state.rotDeg,
+      cx: state.cx,
+      cy: state.cy,
+      gain: state.gain,
+      bias: state.bias,
+      hueDeg: state.hueDeg,
+      delayFrames: state.delayFrames,
+      delayMix: state.delayMix,
+      filterMode: state.filterMode,
+      apertureMode: state.apertureMode,
+      fold: state.fold,
+      invert: state.invert,
+      ballastEnabled: state.ballastEnabled,
+      ballastTarget: state.ballastTarget,
+      measuredTauMs: state.measuredTauMs,
+    };
+    const json = JSON.stringify(preset, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      logStatus('Preset JSON copied to clipboard.');
+    } catch (_) {
+      console.log(json);
+      logStatus('Logged Preset JSON to browser console.');
+    }
+  });
+
+  // =========================================================================
+  // 11. BOOT
+  // =========================================================================
+  refreshCameraList();
+  applyRegime('crutchfield');
+  requestAnimationFrame(renderFrame);
+})();
+</script>
+</body>
+</html>
