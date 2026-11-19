@@ -1,5 +1,7 @@
 # FunWithOpticalLoops — Optical Cavity Lab (Flicker warning) 
 
+Can get a tad flickery if you have problem with that. 
+
 ![pic](pic.png)
 
 **[Launch Live in Browser (GitHub Pages)](https://anttiluode.github.io/FunWithOpticalLoops/)**
