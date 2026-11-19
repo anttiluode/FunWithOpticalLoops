@@ -1,4 +1,4 @@
-# FunWithOpticalLoops — Optical Cavity Lab
+# FunWithOpticalLoops — Optical Cavity Lab (Flicker warning) 
 
 ![pic](pic.png)
 
